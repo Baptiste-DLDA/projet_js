@@ -11,7 +11,7 @@ const buildModel = (file) => {
         }
         lines = data.split("\n");
         for (let word of lines) {
-            word = word.normalize("NFC");
+            word = word.normalize("NFC").toLowerCase();
             if (word.length < 2) continue;
 
             for (let i = 0; i < word.length - 1; i++) {
