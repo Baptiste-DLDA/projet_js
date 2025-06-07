@@ -1,30 +1,24 @@
-//import * as R from "ramda";
-
+import * as R from "ramda";
 import fs from "node:fs";
 
-const buildModel = (file) => {
-    let model = {};
-    let lines;
-    fs.readFile(file, "utf8", (err, data) => {
+const nextLetterModel = (data,word) => {
+    return R.pipe(
+        R.split('\n'),
+        R.filter(R.startsWith(word)),
+        R.map(word=>word.normalize("NFC").toLowerCase()),
+        R.map(R.drop(word.length)),
+        )(data);
+}
+
+
+const main = () => {
+    fs.readFile("./list.txt", "utf8", (err, data) => {
         if (err) {
             console.error(err);
         }
-        lines = data.split("\n");
-        for (let word of lines) {
-            word = word.normalize("NFC").toLowerCase();
-            if (word.length < 2) continue;
-
-            for (let i = 0; i < word.length - 1; i++) {
-                const current = word[i];
-                const next = word[i + 1];
-
-                if (!model[current]) model[current] = {};
-                if (!model[current][next]) model[current][next] = 0;
-                model[current][next]++;
-            }
-        }
-        console.log(model);
+        console.log(nextLetterModel(data,"bite"));
     });
+
 };
 
-buildModel("./list.txt");
+main();
