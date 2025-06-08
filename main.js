@@ -24,23 +24,24 @@ const nextLetterModel = (data,word) => {
         )(data);
 }
 
-const buildTrigramModel = R.pipe(
-    R.map(R.split(' ')),
-    R.chain(words => R.aperture(3, words)),
-    R.groupBy(triplet => `${triplet[0]} ${triplet[1]}`),
-    R.map(R.pipe(
-        R.map(R.nth(2)),
-        R.countBy(R.identity),
-        R.toPairs,
-        R.sortBy(R.pipe(R.nth(1), Number)),
-        R.reverse
+const buildNgramModel = (corpus,ngram) => {
+    return R.pipe(
+        R.map(R.split(' ')),
+        R.filter(words => words.length >= ngram),
+        R.chain(words => R.aperture(ngram, words)),
+        R.groupBy(ngramArray => ngramArray.slice(0, ngram - 1).join(' ')),
+        R.map(R.pipe(
+            R.map(ngramArray => ngramArray[ngram - 1]), // dernier mot
+            R.countBy(R.identity),
+            R.toPairs,
+            R.sortBy(R.pipe(R.nth(1), Number)),
+            R.reverse
     ))
-);
+)(corpus)};
 
-const getTopNextWords = (model, context) => {
-    const key2 = R.join(' ', R.takeLast(2, context));
-    const key1 = R.last(context);
-    const options = model[key2] || model[key1] || [];
+const getTopNextWords = (model, context, ngram) => {
+    const key = R.join(' ', R.takeLast(ngram - 1, context));
+    const options = model[key] || [];
     return R.pipe(
         R.map(R.nth(0)),
         R.uniq,
@@ -55,6 +56,7 @@ const main = () => {
             console.error(err);
         }
         console.log("-----Modèle Next Letter-----")
+        console.log("Contexte : propre")
         console.log(nextLetterModel(data,"propre"));
     });
     fs.readFile("./corpus_clean.txt", "utf8", (err, data) => {
@@ -68,9 +70,10 @@ const main = () => {
             R.reject(R.isEmpty)
         );
 
-        const model = buildTrigramModel(corpusLines(data));
-        console.log("-----Modèle Trigram Mots-----")
-        console.log(getTopNextWords(model,R.pipe(cleanText, R.split(' '))("je suis")));
+        console.log("-----Modèle 4gram Mots-----")
+        console.log("Contexte : tu es très")
+        const model4 = buildNgramModel(corpusLines(data),4);
+        console.log(getTopNextWords(model4,R.pipe(cleanText, R.split(' '))("tu es très"),4));
     });
 };
 
