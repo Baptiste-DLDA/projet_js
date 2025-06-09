@@ -23,6 +23,24 @@ const buildLetterModel = (data, ngram) => {
     )(data);
 };
 
+const completeWord = (prefix, data) => {
+    const normalizedPrefix = normalize(prefix);
+
+    const suggestions = R.pipe(
+        R.split('\n'),
+        R.map(normalize),
+        R.filter(word => word.startsWith(normalizedPrefix)),
+        R.countBy(R.identity),
+        R.toPairs,
+        R.sort(R.descend(R.nth(1))),
+        R.map(R.head),
+        R.take(3)
+    )(data);
+
+    return suggestions;
+};
+
+
 
 const nextLetterMarkov = (model, word) => {
     const context = normalize(word);
@@ -81,6 +99,12 @@ const main = () => {
         console.log("Contexte : " + word);
         const model = buildLetterModel(data,word.length+1);
         console.log(nextLetterMarkov(model, word));
+
+        console.log("-----Modèle Complétion de mot-----");
+        const prefix = "lund";
+        console.log("Préfixe : " + prefix);
+        console.log(completeWord(prefix, data));
+
     });
     fs.readFile("./corpus_clean.txt", "utf8", (err, data) => {
         if (err) {
