@@ -10,43 +10,63 @@ const cleanText = R.pipe(
     R.trim
 );
 
-const nextLetterModel = (data,word) => {
+
+const buildLetterModel = (data, ngram) => {
     return R.pipe(
         R.split('\n'),
-        R.filter(R.startsWith(word)),
-        R.map(normalize),
-        R.map(R.drop(word.length)),
-        R.map(R.head),
-        R.countBy(R.identity),
-        R.toPairs,
+        R.chain(word => R.aperture(ngram, normalize(word))),
+        R.groupBy(ngramArray => ngramArray.slice(0, ngram - 1).join('')),
+        R.map(R.pipe(
+            R.map(ngramArray => ngramArray[ngram - 1]),
+            R.countBy(R.identity),
+        ))
+    )(data);
+};
+
+const nextLetterMarkov = (model, word) => {
+    const context = normalize(word);
+    const options = model[context] || {};
+
+    const pairs = R.toPairs(options);
+    const total = R.sum(R.pluck(1, pairs));
+
+    return R.pipe(
         R.sort(([, a], [, b]) => b - a),
-        //R.take(3)
-        )(data);
-}
+        R.map(([letter, count]) => [letter, (count / total * 100).toFixed(1) + '%']),
+        R.take(3)
+    )(pairs);
+};
+
 
 const buildNgramModel = (corpus,ngram) => {
     return R.pipe(
         R.map(R.split(' ')),
-        R.filter(words => words.length >= ngram),
+        R.filter(words => words.length >= ngram-1),
         R.chain(words => R.aperture(ngram, words)),
         R.groupBy(ngramArray => ngramArray.slice(0, ngram - 1).join(' ')),
         R.map(R.pipe(
-            R.map(ngramArray => ngramArray[ngram - 1]), // dernier mot
+            R.map(ngramArray => ngramArray[ngram - 1]),
             R.countBy(R.identity),
             R.toPairs,
             R.sortBy(R.pipe(R.nth(1), Number)),
             R.reverse
-    ))
-)(corpus)};
+        ))
+    )(corpus);
+};
 
 const getTopNextWords = (model, context, ngram) => {
     const key = R.join(' ', R.takeLast(ngram - 1, context));
     const options = model[key] || [];
+
+    const counts = R.countBy(R.identity, R.map(R.head, options));
+    const total = R.sum(R.values(counts));
+
     return R.pipe(
-        R.map(R.nth(0)),
-        R.uniq,
+        R.toPairs,
+        R.sort(([, a], [, b]) => b - a),
+        R.map(([word, count]) => [word, (count / total * 100).toFixed(4) + '%']),
         R.take(3)
-    )(options);
+    )(counts);
 };
 
 
@@ -57,7 +77,9 @@ const main = () => {
         }
         console.log("-----Modèle Next Letter-----")
         console.log("Contexte : propre")
-        console.log(nextLetterModel(data,"propre"));
+        const word='propre';
+        const model = buildLetterModel(data,word.length+1);
+        console.log(nextLetterMarkov(model, word));
     });
     fs.readFile("./corpus_clean.txt", "utf8", (err, data) => {
         if (err) {
@@ -70,10 +92,10 @@ const main = () => {
             R.reject(R.isEmpty)
         );
 
-        console.log("-----Modèle 4gram Mots-----")
-        console.log("Contexte : tu es très")
-        const model4 = buildNgramModel(corpusLines(data),4);
-        console.log(getTopNextWords(model4,R.pipe(cleanText, R.split(' '))("tu es très"),4));
+        console.log("-----Modèle Ngram Words-----")
+        console.log("Contexte : tu es")
+        const model = buildNgramModel(corpusLines(data),3);
+        console.log(getTopNextWords(model,R.pipe(cleanText, R.split(' '))("tu es"),3));
     });
 };
 
