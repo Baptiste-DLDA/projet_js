@@ -23,6 +23,7 @@ const buildLetterModel = (data, ngram) => {
     )(data);
 };
 
+
 const nextLetterMarkov = (model, word) => {
     const context = normalize(word);
     const options = model[context] || {};
@@ -76,8 +77,8 @@ const main = () => {
             console.error(err);
         }
         console.log("-----Modèle Next Letter-----")
-        console.log("Contexte : propre")
         const word='propre';
+        console.log("Contexte : " + word);
         const model = buildLetterModel(data,word.length+1);
         console.log(nextLetterMarkov(model, word));
     });
@@ -93,9 +94,11 @@ const main = () => {
         );
 
         console.log("-----Modèle Ngram Words-----")
-        console.log("Contexte : tu es")
-        const model = buildNgramModel(corpusLines(data),3);
-        console.log(getTopNextWords(model,R.pipe(cleanText, R.split(' '))("tu es"),3));
+        const phrase = "tu es"
+        const ngram=phrase.split(' ').length+1;
+        console.log("Contexte : " + phrase);
+        const model = buildNgramModel(corpusLines(data),ngram);
+        console.log(getTopNextWords(model,R.pipe(cleanText, R.split(' '))(phrase),ngram));
     });
 };
 
