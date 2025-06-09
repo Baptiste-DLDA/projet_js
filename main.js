@@ -1,7 +1,8 @@
 import * as R from "ramda";
 import fs from "node:fs";
 
-const normalize = word=>word.normalize("NFC").toLowerCase()
+const normalize = word => word.normalize("NFC").toLowerCase()
+const total = R.pipe(R.map(R.nth(1)),R.sum);
 
 const cleanText = R.pipe(
     R.toLower,
@@ -19,41 +20,43 @@ const buildLetterModel = (data, ngram) => {
         R.map(R.pipe(
             R.map(ngramArray => ngramArray[ngram - 1]),
             R.countBy(R.identity),
+            R.toPairs,
+            R.sort(([, a], [, b]) => b - a),
         ))
     )(data);
 };
+
+const nextLetterMarkov = (model, word) => {
+    const context = normalize(word);
+    const options = model[context] || {};
+    const sum = total(options);
+
+    return R.pipe(
+        R.map(([letter, count]) => [letter, (count / sum * 100).toFixed(1) + '%']),
+        R.take(3)
+    )(options);
+};
+
 
 const completeWord = (prefix, data) => {
     const normalizedPrefix = normalize(prefix);
 
     return R.pipe(
-        R.split('\n'),
-        R.map(normalize),
+        R.split(/[.,!?;:()" \n]+/),
         R.filter(word => word.startsWith(normalizedPrefix)),
         R.countBy(R.identity),
         R.toPairs,
         R.sort(R.descend(R.nth(1))),
-        R.map(R.head),
-        R.take(3)
+        counts => {
+            const sum = total(counts)
+            return R.pipe(
+                R.map(([word, count]) => [word, (count / sum * 100).toFixed(2) + '%']),
+                R.take(3)
+            )(counts);
+        }
     )(data);
-
 };
 
-
-
-const nextLetterMarkov = (model, word) => {
-    const context = normalize(word);
-    const options = model[context] || {};
-
-    const pairs = R.toPairs(options);
-    const total = R.sum(R.pluck(1, pairs));
-
-    return R.pipe(
-        R.sort(([, a], [, b]) => b - a),
-        R.map(([letter, count]) => [letter, (count / total * 100).toFixed(1) + '%']),
-        R.take(3)
-    )(pairs);
-};
 
 
 const buildNgramModel = (corpus,ngram) => {
@@ -66,25 +69,21 @@ const buildNgramModel = (corpus,ngram) => {
             R.map(ngramArray => ngramArray[ngram - 1]),
             R.countBy(R.identity),
             R.toPairs,
-            R.sortBy(R.pipe(R.nth(1), Number)),
-            R.reverse
+            R.sort(([, a], [, b]) => b - a),
         ))
     )(corpus);
 };
 
+
 const getTopNextWords = (model, context, ngram) => {
     const key = R.join(' ', R.takeLast(ngram - 1, context));
     const options = model[key] || [];
-
-    const counts = R.countBy(R.identity, R.map(R.head, options));
-    const total = R.sum(R.values(counts));
+    const sum = total(options);
 
     return R.pipe(
-        R.toPairs,
-        R.sort(([, a], [, b]) => b - a),
-        R.map(([word, count]) => [word, (count / total * 100).toFixed(4) + '%']),
+        R.map(([word, count]) => [word, (count / sum * 100).toFixed(4) + '%']),
         R.take(3)
-    )(counts);
+    )(options);
 };
 
 
@@ -96,13 +95,9 @@ const main = () => {
         console.log("-----Modèle Next Letter-----")
         const word='propre';
         console.log("Contexte : " + word);
+
         const model = buildLetterModel(data,word.length+1);
         console.log(nextLetterMarkov(model, word));
-
-        console.log("-----Modèle Complétion de mot-----");
-        const prefix = "lund";
-        console.log("Préfixe : " + prefix);
-        console.log(completeWord(prefix, data));
 
     });
     fs.readFile("./corpus_clean.txt", "utf8", (err, data) => {
@@ -115,6 +110,12 @@ const main = () => {
             R.map(cleanText),
             R.reject(R.isEmpty)
         );
+
+        console.log("-----Modèle Complétion de mot-----");
+        const prefix = "lun";
+        console.log("Contexte : " + prefix);
+        console.log(completeWord(prefix, data));
+
 
         console.log("-----Modèle Ngram Words-----")
         const phrase = "tu es"
