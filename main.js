@@ -26,7 +26,7 @@ const buildLetterModel = (data, ngram) => {
 const completeWord = (prefix, data) => {
     const normalizedPrefix = normalize(prefix);
 
-    const suggestions = R.pipe(
+    return R.pipe(
         R.split('\n'),
         R.map(normalize),
         R.filter(word => word.startsWith(normalizedPrefix)),
@@ -37,7 +37,6 @@ const completeWord = (prefix, data) => {
         R.take(3)
     )(data);
 
-    return suggestions;
 };
 
 
