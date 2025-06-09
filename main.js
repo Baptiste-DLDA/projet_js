@@ -1,72 +1,105 @@
 import * as R from "ramda";
-import fs from "node:fs/promises";
+import fs from "node:fs";
 
-const length = 6;
+const normalize = word=>word.normalize("NFC").toLowerCase()
 
-const main = async () => {
-    try {
-        const data = await fs.readFile("./30k_sentences.txt", "utf-8");
-        //Sépration des lignes
-        const lines = data.split('\n');
+const cleanText = R.pipe(
+    R.toLower,
+    R.replace(/[.,!?;:()"\[\]{}<>«»'`’]/g, ''),
+    R.replace(/\s+/g, ' '),
+    R.trim
+);
 
-        //Nettoyage des lignes
-        const sentences = lines.map(line => {
-            const parts = line.split('\t');
-            return parts.length > 1 ? parts.slice(1).join('\t') : '';
-        }).filter(Boolean);
 
-        //Rassembler tout le texte en une seule chaîne
-        const fullText = sentences.join(' ');
+const buildLetterModel = (data, ngram) => {
+    return R.pipe(
+        R.split('\n'),
+        R.chain(word => R.aperture(ngram, normalize(word))),
+        R.groupBy(ngramArray => ngramArray.slice(0, ngram - 1).join('')),
+        R.map(R.pipe(
+            R.map(ngramArray => ngramArray[ngram - 1]),
+            R.countBy(R.identity),
+        ))
+    )(data);
+};
 
-        //Normalisation
-        const words = fullText
-            .toLowerCase()
-            .normalize('NFC')
-            .split(/\W+/)
-            .filter(Boolean);
 
-        const MarkovModel = (words) => {
-            const model = {};
-            for (let i = 0; i < words.length - 1; i++) {
-                const current = words[i];
-                const next = words[i + 1];
-                if (!model[current]) model[current] = [];
-                model[current].push(next);
-            }
-            return model;
-        };
+const nextLetterMarkov = (model, word) => {
+    const context = normalize(word);
+    const options = model[context] || {};
 
-        const model = MarkovModel(words);
+    const pairs = R.toPairs(options);
+    const total = R.sum(R.pluck(1, pairs));
 
-        const predictNextWord = (model, currentWord) => {
-            const possible = model[currentWord];
-            if (!possible || possible.length === 0) return null;
+    return R.pipe(
+        R.sort(([, a], [, b]) => b - a),
+        R.map(([letter, count]) => [letter, (count / total * 100).toFixed(1) + '%']),
+        R.take(3)
+    )(pairs);
+};
 
-            const counts = R.countBy(R.identity, possible);
-            const maxEntry = R.toPairs(counts).reduce(
-                (max, entry) => (entry[1] > max[1] ? entry : max),
-                ['', 0]
-            );
-            return maxEntry[0];
-        };
 
-        const generateSentence = (model, startWord) => {
-            let sentence = [startWord.toLowerCase()];
-            while (sentence.length < length) {
-                const next = predictNextWord(model, sentence[sentence.length - 1]);
-                if (!next) break;
-                sentence.push(next);
-            }
-            return sentence.join(' ');
-        };
+const buildNgramModel = (corpus,ngram) => {
+    return R.pipe(
+        R.map(R.split(' ')),
+        R.filter(words => words.length >= ngram-1),
+        R.chain(words => R.aperture(ngram, words)),
+        R.groupBy(ngramArray => ngramArray.slice(0, ngram - 1).join(' ')),
+        R.map(R.pipe(
+            R.map(ngramArray => ngramArray[ngram - 1]),
+            R.countBy(R.identity),
+            R.toPairs,
+            R.sortBy(R.pipe(R.nth(1), Number)),
+            R.reverse
+        ))
+    )(corpus);
+};
 
-        const start = "bonjour";
-        const phrase = generateSentence(model, start, 4);
-        console.log(`Phrase générée à partir de "${start}":`, phrase);
+const getTopNextWords = (model, context, ngram) => {
+    const key = R.join(' ', R.takeLast(ngram - 1, context));
+    const options = model[key] || [];
 
-    } catch (err) {
-        console.error(err);
-    }
+    const counts = R.countBy(R.identity, R.map(R.head, options));
+    const total = R.sum(R.values(counts));
+
+    return R.pipe(
+        R.toPairs,
+        R.sort(([, a], [, b]) => b - a),
+        R.map(([word, count]) => [word, (count / total * 100).toFixed(4) + '%']),
+        R.take(3)
+    )(counts);
+};
+
+
+const main = () => {
+    fs.readFile("./list.txt", "utf8", (err, data) => {
+        if (err) {
+            console.error(err);
+        }
+        console.log("-----Modèle Next Letter-----")
+        const word='propre';
+        console.log("Contexte : " + word);
+        const model = buildLetterModel(data,word.length+1);
+        console.log(nextLetterMarkov(model, word));
+    });
+    fs.readFile("./corpus_clean.txt", "utf8", (err, data) => {
+        if (err) {
+            console.error(err);
+        }
+
+        const corpusLines = R.pipe(
+            R.split('\n'),
+            R.map(cleanText),
+            R.reject(R.isEmpty)
+        );
+
+        console.log("-----Modèle Ngram Words-----")
+        const phrase = "tu es"
+        const ngram=phrase.split(' ').length+1;
+        console.log("Contexte : " + phrase);
+        const model = buildNgramModel(corpusLines(data),ngram);
+        console.log(getTopNextWords(model,R.pipe(cleanText, R.split(' '))(phrase),ngram));
+    });
 };
 
 main();
